@@ -5,6 +5,60 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
+
+def safe_log_message(message: str) -> str:
+	"""Safely handle log messages that may contain emoji or other Unicode characters.
+	
+	This function ensures that log messages can be safely written to any console,
+	including Windows consoles with limited encoding support.
+	"""
+	if not message:
+		return message
+	
+	# More comprehensive approach: replace any non-ASCII characters with safe equivalents
+	try:
+		# Try to encode as ASCII - if it works, no changes needed
+		message.encode('ascii')
+		return message
+	except UnicodeEncodeError:
+		# If encoding fails, replace problematic characters
+		# First, try common emoji replacements
+		emoji_replacements = {
+			'⚡': '[LIGHTNING]',
+			'🔥': '[FIRE]',
+			'✅': '[CHECK]',
+			'❌': '[X]',
+			'⚠️': '[WARN]',
+			'💡': '[IDEA]',
+			'🚀': '[ROCKET]',
+			'🎯': '[TARGET]',
+			'📝': '[NOTE]',
+			'🔍': '[SEARCH]',
+			'📊': '[CHART]',
+			'🔄': '[REFRESH]',
+			'⏱️': '[TIMER]',
+			'📱': '[MOBILE]',
+			'💻': '[DESKTOP]',
+			'🌐': '[WEB]',
+			'🔐': '[LOCK]',
+			'📧': '[EMAIL]',
+			'📞': '[PHONE]',
+			'📍': '[LOCATION]',
+		}
+		
+		# Replace known emojis first
+		for emoji, replacement in emoji_replacements.items():
+			message = message.replace(emoji, replacement)
+		
+		# Then handle any remaining non-ASCII characters
+		try:
+			# Try encoding again after emoji replacement
+			message.encode('ascii')
+			return message
+		except UnicodeEncodeError:
+			# If still fails, use a more aggressive approach
+			return message.encode('ascii', errors='replace').decode('ascii')
+
 load_dotenv()
 
 from browser_use.config import CONFIG
@@ -100,8 +154,8 @@ def setup_logging(stream=None, log_level=None, force_setup=False, debug_log_file
 					record.name = 'Agent'
 				elif 'BrowserSession' in record.name:
 					record.name = 'BrowserSession'
-				elif 'tools' in record.name:
-					record.name = 'tools'
+				elif 'controller' in record.name:
+					record.name = 'controller'
 				elif 'dom' in record.name:
 					record.name = 'dom'
 				elif record.name.startswith('browser_use.'):
@@ -109,10 +163,41 @@ def setup_logging(stream=None, log_level=None, force_setup=False, debug_log_file
 					parts = record.name.split('.')
 					if len(parts) >= 2:
 						record.name = parts[-1]
-			return super().format(record)
+			
+			# Format the record first
+			formatted = super().format(record)
+			
+			# Apply safe message processing for cross-platform compatibility
+			return safe_log_message(formatted)
 
 	# Setup single handler for all loggers
 	console = logging.StreamHandler(stream or sys.stdout)
+	
+	# Handle Windows console encoding issues
+	if sys.platform == "win32":
+		# Create a Windows-safe handler for better compatibility
+		class WindowsSafeStreamHandler(logging.StreamHandler):
+			def emit(self, record):
+				try:
+					msg = self.format(record)
+					stream = self.stream
+					# Write the message (already processed by formatter)
+					stream.write(msg + self.terminator)
+					self.flush()
+				except (UnicodeEncodeError, ValueError) as e:
+					# Handle any encoding or buffer issues
+					try:
+						# Try to write a safe version
+						safe_msg = msg.encode('ascii', errors='replace').decode('ascii')
+						stream.write(safe_msg + self.terminator)
+						self.flush()
+					except Exception:
+						# If all else fails, just skip this message
+						pass
+				except Exception:
+					self.handleError(record)
+		
+		console = WindowsSafeStreamHandler(stream or sys.stdout)
 
 	# Determine the log level to use first
 	if log_type == 'result':
@@ -261,7 +346,9 @@ class FIFOHandler(logging.Handler):
 					# No reader connected yet, skip this message
 					return
 
-			msg = f'{self.format(record)}\n'.encode()
+			# Format the message (already processed by formatter)
+			formatted = self.format(record)
+			msg = f'{formatted}\n'.encode('utf-8')
 			os.write(self.fd, msg)
 		except (OSError, BrokenPipeError):
 			# Reader disconnected, close and reset
@@ -303,7 +390,7 @@ def setup_log_pipes(session_id: str, base_dir: str | None = None):
 	agent_handler = FIFOHandler(str(pipe_dir / 'agent.pipe'))
 	agent_handler.setLevel(logging.DEBUG)
 	agent_handler.setFormatter(logging.Formatter('%(levelname)-8s [%(name)s] %(message)s'))
-	for name in ['browser_use.agent', 'browser_use.tools']:
+	for name in ['browser_use.agent', 'browser_use.controller']:
 		logger = logging.getLogger(name)
 		logger.addHandler(agent_handler)
 		logger.setLevel(logging.DEBUG)
