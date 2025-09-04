@@ -32,6 +32,8 @@ class ActionInfo(BaseModel):
     value: Optional[str] = None
     up: Optional[bool] = None
     down: Optional[bool] = None
+    time_seconds: Optional[int] = None
+    file_path: Optional[str] = None
     
     def dict(self, **kwargs):
         """Return dictionary representation excluding None values"""
@@ -127,6 +129,72 @@ async def _parse_action_with_real_xpath(action_item, browser_session) -> Optiona
                     up=up,
                     down=down
                 )
+                
+            elif action_name == 'get_dropdown_options':
+                element_index = action_data['get_dropdown_options'].get('index')
+                real_xpath = await _get_real_xpath_from_index(element_index, browser_session)
+                return ActionInfo(
+                    type="GetDropDownOptions",
+                    selector={"type": "xpathSelector", "value": real_xpath}
+                )
+                
+            elif action_name == 'select_dropdown_option':
+                element_index = action_data['select_dropdown_option'].get('index')
+                text = action_data['select_dropdown_option'].get('text')
+                real_xpath = await _get_real_xpath_from_index(element_index, browser_session)
+                return ActionInfo(
+                    type="SelectDropDownOption",
+                    selector={"type": "xpathSelector", "value": real_xpath},
+                    text=text
+                )
+                
+            elif action_name == 'wait':
+                time_seconds = action_data['wait'].get('seconds', 3)
+                return ActionInfo(
+                    type="WaitAction",
+                    selector={},
+                    time_seconds=time_seconds
+                )
+                
+            elif action_name == 'screenshot':
+                file_path = action_data['screenshot'].get('file_path', '')
+                return ActionInfo(
+                    type="ScreenshotAction",
+                    selector={},
+                    file_path=file_path
+                )
+                
+            elif action_name == 'double_click_element_by_index':
+                element_index = action_data['double_click_element_by_index'].get('index')
+                real_xpath = await _get_real_xpath_from_index(element_index, browser_session)
+                return ActionInfo(
+                    type="DoubleClickAction",
+                    selector={"type": "xpathSelector", "value": real_xpath}
+                )
+                
+            elif action_name == 'hover_element_by_index':
+                element_index = action_data['hover_element_by_index'].get('index')
+                real_xpath = await _get_real_xpath_from_index(element_index, browser_session)
+                return ActionInfo(
+                    type="HoverAction",
+                    selector={"type": "xpathSelector", "value": real_xpath}
+                )
+                
+            elif action_name == 'select_element_by_index':
+                element_index = action_data['select_element_by_index'].get('index')
+                real_xpath = await _get_real_xpath_from_index(element_index, browser_session)
+                return ActionInfo(
+                    type="SelectAction",
+                    selector={"type": "xpathSelector", "value": real_xpath}
+                )
+                
+            elif action_name == 'submit_form_by_index':
+                element_index = action_data['submit_form_by_index'].get('index')
+                real_xpath = await _get_real_xpath_from_index(element_index, browser_session)
+                return ActionInfo(
+                    type="SubmitAction",
+                    selector={"type": "xpathSelector", "value": real_xpath}
+                )
         
         # Handle list format (from history extraction)
         elif isinstance(action_item, list) and len(action_item) > 0:
@@ -169,6 +237,72 @@ async def _parse_action_with_real_xpath(action_item, browser_session) -> Optiona
                         value=str(num_pages),
                         up=up,
                         down=down
+                    )
+                    
+                elif 'get_dropdown_options' in action_data:
+                    element_index = action_data['get_dropdown_options'].get('index')
+                    real_xpath = await _get_real_xpath_from_index(element_index, browser_session)
+                    return ActionInfo(
+                        type="GetDropDownOptions",
+                        selector={"type": "xpathSelector", "value": real_xpath}
+                    )
+                    
+                elif 'select_dropdown_option' in action_data:
+                    element_index = action_data['select_dropdown_option'].get('index')
+                    text = action_data['select_dropdown_option'].get('text')
+                    real_xpath = await _get_real_xpath_from_index(element_index, browser_session)
+                    return ActionInfo(
+                        type="SelectDropDownOption",
+                        selector={"type": "xpathSelector", "value": real_xpath},
+                        text=text
+                    )
+                    
+                elif 'wait' in action_data:
+                    time_seconds = action_data['wait'].get('seconds', 3)
+                    return ActionInfo(
+                        type="WaitAction",
+                        selector={},
+                        time_seconds=time_seconds
+                    )
+                    
+                elif 'screenshot' in action_data:
+                    file_path = action_data['screenshot'].get('file_path', '')
+                    return ActionInfo(
+                        type="ScreenshotAction",
+                        selector={},
+                        file_path=file_path
+                    )
+                    
+                elif 'double_click_element_by_index' in action_data:
+                    element_index = action_data['double_click_element_by_index'].get('index')
+                    real_xpath = await _get_real_xpath_from_index(element_index, browser_session)
+                    return ActionInfo(
+                        type="DoubleClickAction",
+                        selector={"type": "xpathSelector", "value": real_xpath}
+                    )
+                    
+                elif 'hover_element_by_index' in action_data:
+                    element_index = action_data['hover_element_by_index'].get('index')
+                    real_xpath = await _get_real_xpath_from_index(element_index, browser_session)
+                    return ActionInfo(
+                        type="HoverAction",
+                        selector={"type": "xpathSelector", "value": real_xpath}
+                    )
+                    
+                elif 'select_element_by_index' in action_data:
+                    element_index = action_data['select_element_by_index'].get('index')
+                    real_xpath = await _get_real_xpath_from_index(element_index, browser_session)
+                    return ActionInfo(
+                        type="SelectAction",
+                        selector={"type": "xpathSelector", "value": real_xpath}
+                    )
+                    
+                elif 'submit_form_by_index' in action_data:
+                    element_index = action_data['submit_form_by_index'].get('index')
+                    real_xpath = await _get_real_xpath_from_index(element_index, browser_session)
+                    return ActionInfo(
+                        type="SubmitAction",
+                        selector={"type": "xpathSelector", "value": real_xpath}
                     )
     except Exception as e:
         logger.debug(f"Could not parse action: {e}")

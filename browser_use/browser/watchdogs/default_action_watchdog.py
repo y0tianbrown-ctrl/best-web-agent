@@ -6,14 +6,18 @@ import platform
 
 from browser_use.browser.events import (
 	ClickElementEvent,
+	DoubleClickEvent,
 	GetDropdownOptionsEvent,
 	GoBackEvent,
 	GoForwardEvent,
+	HoverEvent,
 	RefreshEvent,
 	ScrollEvent,
 	ScrollToTextEvent,
 	SelectDropdownOptionEvent,
+	SelectTextEvent,
 	SendKeysEvent,
+	SubmitFormEvent,
 	TypeTextEvent,
 	UploadFileEvent,
 	WaitEvent,
@@ -30,6 +34,10 @@ SelectDropdownOptionEvent.model_rebuild()
 TypeTextEvent.model_rebuild()
 ScrollEvent.model_rebuild()
 UploadFileEvent.model_rebuild()
+DoubleClickEvent.model_rebuild()
+HoverEvent.model_rebuild()
+SelectTextEvent.model_rebuild()
+SubmitFormEvent.model_rebuild()
 
 
 class DefaultActionWatchdog(BaseWatchdog):
@@ -2116,3 +2124,960 @@ class DefaultActionWatchdog(BaseWatchdog):
 			error_msg = f'Failed to select dropdown option "{target_text}" for element {index_for_logging}: {str(e)}'
 			self.logger.error(error_msg)
 			raise ValueError(error_msg) from e
+
+	async def on_DoubleClickEvent(self, event: DoubleClickEvent) -> dict | None:
+		"""Handle double click request with CDP."""
+		try:
+			# Check if session is alive before attempting any operations
+			if not self.browser_session.agent_focus or not self.browser_session.agent_focus.target_id:
+				error_msg = 'Cannot execute double click: browser session is corrupted (target_id=None). Session may have crashed.'
+				self.logger.error(f'⚠️ {error_msg}')
+				raise BrowserError(error_msg)
+
+			# Use the provided node
+			element_node = event.node
+			index_for_logging = element_node.element_index or 'unknown'
+			starting_target_id = self.browser_session.agent_focus.target_id
+
+			# Track initial number of tabs to detect new tab opening
+			initial_target_ids = await self.browser_session._cdp_get_all_pages()
+
+			# Check if element is a file input (should not be clicked)
+			if self.browser_session.is_file_input(element_node):
+				msg = f'Index {index_for_logging} - has an element which opens file upload dialog. To upload files please use a specific function to upload files'
+				self.logger.info(msg)
+				raise BrowserError(
+					message=msg,
+					long_term_memory=msg,
+				)
+
+			# Perform the actual double click using internal implementation
+			click_metadata = await self._double_click_element_node_impl(element_node, button=event.button)
+
+			# Build success message
+			msg = f'Double clicked button with index {index_for_logging}: {element_node.get_all_children_text(max_depth=2)}'
+			self.logger.debug(f'🖱️🖱️ {msg}')
+			self.logger.debug(f'Element xpath: {element_node.xpath}')
+
+			# Wait a bit for potential new tab to be created
+			await asyncio.sleep(0.1)
+
+			# Successfully double clicked, always reset session back to parent page session context
+			self.browser_session.agent_focus = await self.browser_session.get_or_create_cdp_session(
+				target_id=starting_target_id, focus=True
+			)
+
+			# Check if a new tab was opened
+			after_target_ids = await self.browser_session._cdp_get_all_pages()
+			new_target_ids = {t['targetId'] for t in after_target_ids} - {t['targetId'] for t in initial_target_ids}
+			new_tab_opened = len(new_target_ids) > 0
+
+			if new_target_ids:
+				new_tab_msg = 'New tab opened - switching to it'
+				msg += f' - {new_tab_msg}'
+				self.logger.info(f'🔗 {new_tab_msg}')
+
+				from browser_use.browser.events import SwitchTabEvent
+
+				new_target_id = new_target_ids.pop()
+				switch_event = await self.event_bus.dispatch(SwitchTabEvent(target_id=new_target_id))
+				await switch_event
+
+			# Return click metadata including new tab information
+			result_metadata = click_metadata if isinstance(click_metadata, dict) else {}
+			result_metadata['new_tab_opened'] = new_tab_opened
+
+			return result_metadata
+		except Exception as e:
+			raise
+
+	async def on_HoverEvent(self, event: HoverEvent) -> dict | None:
+		"""Handle hover request with CDP."""
+		try:
+			# Check if session is alive before attempting any operations
+			if not self.browser_session.agent_focus or not self.browser_session.agent_focus.target_id:
+				error_msg = 'Cannot execute hover: browser session is corrupted (target_id=None). Session may have crashed.'
+				self.logger.error(f'⚠️ {error_msg}')
+				raise BrowserError(error_msg)
+
+			# Use the provided node
+			element_node = event.node
+			index_for_logging = element_node.element_index or 'unknown'
+
+			# Perform the actual hover using internal implementation
+			hover_metadata = await self._hover_element_node_impl(element_node)
+
+			# Build success message
+			msg = f'Hovered over element with index {index_for_logging}: {element_node.get_all_children_text(max_depth=2)}'
+			self.logger.debug(f'👆 {msg}')
+			self.logger.debug(f'Element xpath: {element_node.xpath}')
+
+			# Return hover metadata
+			return hover_metadata if isinstance(hover_metadata, dict) else {}
+		except Exception as e:
+			raise
+
+	async def on_SelectTextEvent(self, event: SelectTextEvent) -> dict | None:
+		"""Handle text selection request with CDP."""
+		try:
+			# Check if session is alive before attempting any operations
+			if not self.browser_session.agent_focus or not self.browser_session.agent_focus.target_id:
+				error_msg = 'Cannot execute select: browser session is corrupted (target_id=None). Session may have crashed.'
+				self.logger.error(f'⚠️ {error_msg}')
+				raise BrowserError(error_msg)
+
+			# Use the provided node
+			element_node = event.node
+			index_for_logging = element_node.element_index or 'unknown'
+
+			# Perform the actual text selection using internal implementation
+			select_metadata = await self._select_element_node_impl(
+				element_node, start_offset=event.start_offset, end_offset=event.end_offset
+			)
+
+			# Build success message
+			msg = f'Selected text in element with index {index_for_logging}: {element_node.get_all_children_text(max_depth=2)}'
+			self.logger.debug(f'📝 {msg}')
+			self.logger.debug(f'Element xpath: {element_node.xpath}')
+
+			# Return select metadata
+			return select_metadata if isinstance(select_metadata, dict) else {}
+		except Exception as e:
+			raise
+
+	async def on_SubmitFormEvent(self, event: SubmitFormEvent) -> dict | None:
+		"""Handle form submission request with CDP."""
+		try:
+			# Check if session is alive before attempting any operations
+			if not self.browser_session.agent_focus or not self.browser_session.agent_focus.target_id:
+				error_msg = 'Cannot execute submit: browser session is corrupted (target_id=None). Session may have crashed.'
+				self.logger.error(f'⚠️ {error_msg}')
+				raise BrowserError(error_msg)
+
+			# Use the provided node
+			element_node = event.node
+			index_for_logging = element_node.element_index or 'unknown'
+
+			# Perform the actual form submission using internal implementation
+			submit_metadata = await self._submit_form_node_impl(element_node)
+
+			# Build success message
+			msg = f'Submitted form with index {index_for_logging}: {element_node.get_all_children_text(max_depth=2)}'
+			self.logger.debug(f'📤 {msg}')
+			self.logger.debug(f'Element xpath: {element_node.xpath}')
+
+			# Return submit metadata
+			return submit_metadata if isinstance(submit_metadata, dict) else {}
+		except Exception as e:
+			raise
+
+	# ========== Implementation Methods for New Actions ==========
+
+	async def _double_click_element_node_impl(self, element_node, button: str = 'left') -> dict | None:
+		"""
+		Double click an element using pure CDP with multiple fallback methods for getting element geometry.
+		Similar to _click_element_node_impl but with double click behavior.
+		"""
+		try:
+			# Check if element is a file input or select dropdown - these should not be clicked
+			tag_name = element_node.tag_name.lower() if element_node.tag_name else ''
+			element_type = element_node.attributes.get('type', '').lower() if element_node.attributes else ''
+
+			if tag_name == 'select':
+				msg = f'Cannot double click on <select> elements. Use get_dropdown_options(index={element_node.element_index}) action instead.'
+				self.logger.warning(msg)
+				raise BrowserError(
+					message=msg,
+					long_term_memory=msg,
+				)
+
+			if tag_name == 'input' and element_type == 'file':
+				msg = f'Cannot double click on file input element (index={element_node.element_index}). File uploads must be handled using upload_file_to_element action.'
+				raise BrowserError(
+					message=msg,
+					long_term_memory=msg,
+				)
+
+			# Get CDP client
+			cdp_session = await self.browser_session.cdp_client_for_node(element_node)
+
+			# Get the correct session ID for the element's frame
+			session_id = cdp_session.session_id
+
+			# Get element bounds
+			backend_node_id = element_node.backend_node_id
+
+			# Get viewport dimensions for visibility checks
+			layout_metrics = await cdp_session.cdp_client.send.Page.getLayoutMetrics(session_id=session_id)
+			viewport_width = layout_metrics['layoutViewport']['clientWidth']
+			viewport_height = layout_metrics['layoutViewport']['clientHeight']
+
+			# Try multiple methods to get element geometry (same as click)
+			quads = []
+
+			# Method 1: Try DOM.getContentQuads first
+			try:
+				content_quads_result = await cdp_session.cdp_client.send.DOM.getContentQuads(
+					params={'backendNodeId': backend_node_id}, session_id=session_id
+				)
+				if 'quads' in content_quads_result and content_quads_result['quads']:
+					quads = content_quads_result['quads']
+					self.logger.debug(f'Got {len(quads)} quads from DOM.getContentQuads')
+			except Exception as e:
+				self.logger.debug(f'DOM.getContentQuads failed: {e}')
+
+			# Method 2: Fall back to DOM.getBoxModel
+			if not quads:
+				try:
+					box_model = await cdp_session.cdp_client.send.DOM.getBoxModel(
+						params={'backendNodeId': backend_node_id}, session_id=session_id
+					)
+					if 'model' in box_model and 'content' in box_model['model']:
+						content_quad = box_model['model']['content']
+						if len(content_quad) >= 8:
+							quads = [
+								[
+									content_quad[0], content_quad[1],  # x1, y1
+									content_quad[2], content_quad[3],  # x2, y2
+									content_quad[4], content_quad[5],  # x3, y3
+									content_quad[6], content_quad[7],  # x4, y4
+								]
+							]
+							self.logger.debug('Got quad from DOM.getBoxModel')
+				except Exception as e:
+					self.logger.debug(f'DOM.getBoxModel failed: {e}')
+
+			# Method 3: Fall back to JavaScript getBoundingClientRect
+			if not quads:
+				try:
+					result = await cdp_session.cdp_client.send.DOM.resolveNode(
+						params={'backendNodeId': backend_node_id},
+						session_id=session_id,
+					)
+					if 'object' in result and 'objectId' in result['object']:
+						object_id = result['object']['objectId']
+
+						bounds_result = await cdp_session.cdp_client.send.Runtime.callFunctionOn(
+							params={
+								'functionDeclaration': """
+									function() {
+										const rect = this.getBoundingClientRect();
+										return {
+											x: rect.left,
+											y: rect.top,
+											width: rect.width,
+											height: rect.height
+										};
+									}
+								""",
+								'objectId': object_id,
+								'returnByValue': True,
+							},
+							session_id=session_id,
+						)
+
+						if 'result' in bounds_result and 'value' in bounds_result['result']:
+							rect = bounds_result['result']['value']
+							x, y, w, h = rect['x'], rect['y'], rect['width'], rect['height']
+							quads = [
+								[x, y, x + w, y, x + w, y + h, x, y + h]  # top-left, top-right, bottom-right, bottom-left
+							]
+							self.logger.debug('Got quad from getBoundingClientRect')
+				except Exception as e:
+					self.logger.debug(f'JavaScript getBoundingClientRect failed: {e}')
+
+			# If we still don't have quads, fall back to JS double click
+			if not quads:
+				self.logger.warning('⚠️ Could not get element geometry from any method, falling back to JavaScript double click')
+				try:
+					result = await cdp_session.cdp_client.send.DOM.resolveNode(
+						params={'backendNodeId': backend_node_id},
+						session_id=session_id,
+					)
+					assert 'object' in result and 'objectId' in result['object'], (
+						'Failed to find DOM element based on backendNodeId, maybe page content changed?'
+					)
+					object_id = result['object']['objectId']
+
+					await cdp_session.cdp_client.send.Runtime.callFunctionOn(
+						params={
+							'functionDeclaration': 'function() { this.dispatchEvent(new MouseEvent("dblclick", { bubbles: true, cancelable: true })); }',
+							'objectId': object_id,
+						},
+						session_id=session_id,
+					)
+					await asyncio.sleep(0.05)
+					return None
+				except Exception as js_e:
+					self.logger.error(f'CDP JavaScript double click also failed: {js_e}')
+					raise Exception(f'Failed to double click element: {js_e}')
+
+			# Find the largest visible quad within the viewport (same logic as click)
+			best_quad = None
+			best_area = 0
+
+			for quad in quads:
+				if len(quad) < 8:
+					continue
+
+				# Calculate quad bounds
+				xs = [quad[i] for i in range(0, 8, 2)]
+				ys = [quad[i] for i in range(1, 8, 2)]
+				min_x, max_x = min(xs), max(xs)
+				min_y, max_y = min(ys), max(ys)
+
+				# Check if quad intersects with viewport
+				if max_x < 0 or max_y < 0 or min_x > viewport_width or min_y > viewport_height:
+					continue  # Quad is completely outside viewport
+
+				# Calculate visible area (intersection with viewport)
+				visible_min_x = max(0, min_x)
+				visible_max_x = min(viewport_width, max_x)
+				visible_min_y = max(0, min_y)
+				visible_max_y = min(viewport_height, max_y)
+
+				visible_width = visible_max_x - visible_min_x
+				visible_height = visible_max_y - visible_min_y
+				visible_area = visible_width * visible_height
+
+				if visible_area > best_area:
+					best_area = visible_area
+					best_quad = quad
+
+			if not best_quad:
+				# No visible quad found, use the first quad anyway
+				best_quad = quads[0]
+				self.logger.warning('No visible quad found, using first quad')
+
+			# Calculate center point of the best quad
+			center_x = sum(best_quad[i] for i in range(0, 8, 2)) / 4
+			center_y = sum(best_quad[i] for i in range(1, 8, 2)) / 4
+
+			# Ensure click point is within viewport bounds
+			center_x = max(0, min(viewport_width - 1, center_x))
+			center_y = max(0, min(viewport_height - 1, center_y))
+
+			# Scroll element into view
+			try:
+				await cdp_session.cdp_client.send.DOM.scrollIntoViewIfNeeded(
+					params={'backendNodeId': backend_node_id}, session_id=session_id
+				)
+				await asyncio.sleep(0.05)  # Wait for scroll to complete
+			except Exception as e:
+				self.logger.debug(f'Failed to scroll element into view: {e}')
+
+			# Perform the double click using CDP
+			try:
+				self.logger.debug(f'👆👆 Double clicking element at x: {center_x}px y: {center_y}px ...')
+
+				# Move mouse to element
+				await cdp_session.cdp_client.send.Input.dispatchMouseEvent(
+					params={
+						'type': 'mouseMoved',
+						'x': center_x,
+						'y': center_y,
+					},
+					session_id=session_id,
+				)
+				await asyncio.sleep(0.05)
+
+				# First click
+				await cdp_session.cdp_client.send.Input.dispatchMouseEvent(
+					params={
+						'type': 'mousePressed',
+						'x': center_x,
+						'y': center_y,
+						'button': button,
+						'clickCount': 1,
+					},
+					session_id=session_id,
+				)
+				await asyncio.sleep(0.05)
+
+				await cdp_session.cdp_client.send.Input.dispatchMouseEvent(
+					params={
+						'type': 'mouseReleased',
+						'x': center_x,
+						'y': center_y,
+						'button': button,
+						'clickCount': 1,
+					},
+					session_id=session_id,
+				)
+				await asyncio.sleep(0.05)
+
+				# Second click (double click)
+				await cdp_session.cdp_client.send.Input.dispatchMouseEvent(
+					params={
+						'type': 'mousePressed',
+						'x': center_x,
+						'y': center_y,
+						'button': button,
+						'clickCount': 2,
+					},
+					session_id=session_id,
+				)
+				await asyncio.sleep(0.05)
+
+				await cdp_session.cdp_client.send.Input.dispatchMouseEvent(
+					params={
+						'type': 'mouseReleased',
+						'x': center_x,
+						'y': center_y,
+						'button': button,
+						'clickCount': 2,
+					},
+					session_id=session_id,
+				)
+
+				self.logger.debug('🖱️🖱️ Double clicked successfully using x,y coordinates')
+				# Return coordinates as dict for metadata
+				return {'click_x': center_x, 'click_y': center_y}
+
+			except Exception as e:
+				self.logger.warning(f'CDP double click failed: {type(e).__name__}: {e}')
+				# Fall back to JavaScript double click via CDP
+				try:
+					result = await cdp_session.cdp_client.send.DOM.resolveNode(
+						params={'backendNodeId': backend_node_id},
+						session_id=session_id,
+					)
+					assert 'object' in result and 'objectId' in result['object'], (
+						'Failed to find DOM element based on backendNodeId, maybe page content changed?'
+					)
+					object_id = result['object']['objectId']
+
+					await cdp_session.cdp_client.send.Runtime.callFunctionOn(
+						params={
+							'functionDeclaration': 'function() { this.dispatchEvent(new MouseEvent("dblclick", { bubbles: true, cancelable: true })); }',
+							'objectId': object_id,
+						},
+						session_id=session_id,
+					)
+					await asyncio.sleep(0.1)
+					return None
+				except Exception as js_e:
+					self.logger.error(f'CDP JavaScript double click also failed: {js_e}')
+					raise Exception(f'Failed to double click element: {e}')
+			finally:
+				# always re-focus back to original top-level page session context
+				cdp_session = await self.browser_session.get_or_create_cdp_session(focus=True)
+				await cdp_session.cdp_client.send.Target.activateTarget(params={'targetId': cdp_session.target_id})
+				await cdp_session.cdp_client.send.Runtime.runIfWaitingForDebugger(session_id=cdp_session.session_id)
+
+		except URLNotAllowedError as e:
+			raise e
+		except BrowserError as e:
+			raise e
+		except Exception as e:
+			# Extract key element info for error message
+			element_info = f'<{element_node.tag_name or "unknown"}'
+			if element_node.element_index:
+				element_info += f' index={element_node.element_index}'
+			element_info += '>'
+			raise BrowserError(
+				message=f'Failed to double click element: {e}',
+				long_term_memory=f'Failed to double click element {element_info}. The element may not be interactable or visible.',
+			)
+
+	async def _hover_element_node_impl(self, element_node) -> dict | None:
+		"""
+		Hover over an element using pure CDP.
+		"""
+		try:
+			# Get CDP client
+			cdp_session = await self.browser_session.cdp_client_for_node(element_node)
+
+			# Get the correct session ID for the element's frame
+			session_id = cdp_session.session_id
+
+			# Get element bounds
+			backend_node_id = element_node.backend_node_id
+
+			# Get viewport dimensions for visibility checks
+			layout_metrics = await cdp_session.cdp_client.send.Page.getLayoutMetrics(session_id=session_id)
+			viewport_width = layout_metrics['layoutViewport']['clientWidth']
+			viewport_height = layout_metrics['layoutViewport']['clientHeight']
+
+			# Try multiple methods to get element geometry (same as click)
+			quads = []
+
+			# Method 1: Try DOM.getContentQuads first
+			try:
+				content_quads_result = await cdp_session.cdp_client.send.DOM.getContentQuads(
+					params={'backendNodeId': backend_node_id}, session_id=session_id
+				)
+				if 'quads' in content_quads_result and content_quads_result['quads']:
+					quads = content_quads_result['quads']
+					self.logger.debug(f'Got {len(quads)} quads from DOM.getContentQuads')
+			except Exception as e:
+				self.logger.debug(f'DOM.getContentQuads failed: {e}')
+
+			# Method 2: Fall back to DOM.getBoxModel
+			if not quads:
+				try:
+					box_model = await cdp_session.cdp_client.send.DOM.getBoxModel(
+						params={'backendNodeId': backend_node_id}, session_id=session_id
+					)
+					if 'model' in box_model and 'content' in box_model['model']:
+						content_quad = box_model['model']['content']
+						if len(content_quad) >= 8:
+							quads = [
+								[
+									content_quad[0], content_quad[1],  # x1, y1
+									content_quad[2], content_quad[3],  # x2, y2
+									content_quad[4], content_quad[5],  # x3, y3
+									content_quad[6], content_quad[7],  # x4, y4
+								]
+							]
+							self.logger.debug('Got quad from DOM.getBoxModel')
+				except Exception as e:
+					self.logger.debug(f'DOM.getBoxModel failed: {e}')
+
+			# Method 3: Fall back to JavaScript getBoundingClientRect
+			if not quads:
+				try:
+					result = await cdp_session.cdp_client.send.DOM.resolveNode(
+						params={'backendNodeId': backend_node_id},
+						session_id=session_id,
+					)
+					if 'object' in result and 'objectId' in result['object']:
+						object_id = result['object']['objectId']
+
+						bounds_result = await cdp_session.cdp_client.send.Runtime.callFunctionOn(
+							params={
+								'functionDeclaration': """
+									function() {
+										const rect = this.getBoundingClientRect();
+										return {
+											x: rect.left,
+											y: rect.top,
+											width: rect.width,
+											height: rect.height
+										};
+									}
+								""",
+								'objectId': object_id,
+								'returnByValue': True,
+							},
+							session_id=session_id,
+						)
+
+						if 'result' in bounds_result and 'value' in bounds_result['result']:
+							rect = bounds_result['result']['value']
+							x, y, w, h = rect['x'], rect['y'], rect['width'], rect['height']
+							quads = [
+								[x, y, x + w, y, x + w, y + h, x, y + h]  # top-left, top-right, bottom-right, bottom-left
+							]
+							self.logger.debug('Got quad from getBoundingClientRect')
+				except Exception as e:
+					self.logger.debug(f'JavaScript getBoundingClientRect failed: {e}')
+
+			# If we still don't have quads, fall back to JS hover
+			if not quads:
+				self.logger.warning('⚠️ Could not get element geometry from any method, falling back to JavaScript hover')
+				try:
+					result = await cdp_session.cdp_client.send.DOM.resolveNode(
+						params={'backendNodeId': backend_node_id},
+						session_id=session_id,
+					)
+					assert 'object' in result and 'objectId' in result['object'], (
+						'Failed to find DOM element based on backendNodeId, maybe page content changed?'
+					)
+					object_id = result['object']['objectId']
+
+					await cdp_session.cdp_client.send.Runtime.callFunctionOn(
+						params={
+							'functionDeclaration': 'function() { this.dispatchEvent(new MouseEvent("mouseover", { bubbles: true, cancelable: true })); }',
+							'objectId': object_id,
+						},
+						session_id=session_id,
+					)
+					await asyncio.sleep(0.05)
+					return None
+				except Exception as js_e:
+					self.logger.error(f'CDP JavaScript hover also failed: {js_e}')
+					raise Exception(f'Failed to hover element: {js_e}')
+
+			# Find the largest visible quad within the viewport
+			best_quad = None
+			best_area = 0
+
+			for quad in quads:
+				if len(quad) < 8:
+					continue
+
+				# Calculate quad bounds
+				xs = [quad[i] for i in range(0, 8, 2)]
+				ys = [quad[i] for i in range(1, 8, 2)]
+				min_x, max_x = min(xs), max(xs)
+				min_y, max_y = min(ys), max(ys)
+
+				# Check if quad intersects with viewport
+				if max_x < 0 or max_y < 0 or min_x > viewport_width or min_y > viewport_height:
+					continue  # Quad is completely outside viewport
+
+				# Calculate visible area (intersection with viewport)
+				visible_min_x = max(0, min_x)
+				visible_max_x = min(viewport_width, max_x)
+				visible_min_y = max(0, min_y)
+				visible_max_y = min(viewport_height, max_y)
+
+				visible_width = visible_max_x - visible_min_x
+				visible_height = visible_max_y - visible_min_y
+				visible_area = visible_width * visible_height
+
+				if visible_area > best_area:
+					best_area = visible_area
+					best_quad = quad
+
+			if not best_quad:
+				# No visible quad found, use the first quad anyway
+				best_quad = quads[0]
+				self.logger.warning('No visible quad found, using first quad')
+
+			# Calculate center point of the best quad
+			center_x = sum(best_quad[i] for i in range(0, 8, 2)) / 4
+			center_y = sum(best_quad[i] for i in range(1, 8, 2)) / 4
+
+			# Ensure hover point is within viewport bounds
+			center_x = max(0, min(viewport_width - 1, center_x))
+			center_y = max(0, min(viewport_height - 1, center_y))
+
+			# Scroll element into view
+			try:
+				await cdp_session.cdp_client.send.DOM.scrollIntoViewIfNeeded(
+					params={'backendNodeId': backend_node_id}, session_id=session_id
+				)
+				await asyncio.sleep(0.05)  # Wait for scroll to complete
+			except Exception as e:
+				self.logger.debug(f'Failed to scroll element into view: {e}')
+
+			# Perform the hover using CDP
+			try:
+				self.logger.debug(f'👆 Hovering over element at x: {center_x}px y: {center_y}px ...')
+
+				# Move mouse to element
+				await cdp_session.cdp_client.send.Input.dispatchMouseEvent(
+					params={
+						'type': 'mouseMoved',
+						'x': center_x,
+						'y': center_y,
+					},
+					session_id=session_id,
+				)
+				await asyncio.sleep(0.05)
+
+				# Trigger mouseover event
+				await cdp_session.cdp_client.send.Input.dispatchMouseEvent(
+					params={
+						'type': 'mousePressed',
+						'x': center_x,
+						'y': center_y,
+						'button': 'left',
+						'clickCount': 0,
+					},
+					session_id=session_id,
+				)
+				await asyncio.sleep(0.05)
+
+				await cdp_session.cdp_client.send.Input.dispatchMouseEvent(
+					params={
+						'type': 'mouseReleased',
+						'x': center_x,
+						'y': center_y,
+						'button': 'left',
+						'clickCount': 0,
+					},
+					session_id=session_id,
+				)
+
+				self.logger.debug('👆 Hovered successfully using x,y coordinates')
+				# Return coordinates as dict for metadata
+				return {'hover_x': center_x, 'hover_y': center_y}
+
+			except Exception as e:
+				self.logger.warning(f'CDP hover failed: {type(e).__name__}: {e}')
+				# Fall back to JavaScript hover via CDP
+				try:
+					result = await cdp_session.cdp_client.send.DOM.resolveNode(
+						params={'backendNodeId': backend_node_id},
+						session_id=session_id,
+					)
+					assert 'object' in result and 'objectId' in result['object'], (
+						'Failed to find DOM element based on backendNodeId, maybe page content changed?'
+					)
+					object_id = result['object']['objectId']
+
+					await cdp_session.cdp_client.send.Runtime.callFunctionOn(
+						params={
+							'functionDeclaration': 'function() { this.dispatchEvent(new MouseEvent("mouseover", { bubbles: true, cancelable: true })); }',
+							'objectId': object_id,
+						},
+						session_id=session_id,
+					)
+					await asyncio.sleep(0.1)
+					return None
+				except Exception as js_e:
+					self.logger.error(f'CDP JavaScript hover also failed: {js_e}')
+					raise Exception(f'Failed to hover element: {e}')
+			finally:
+				# always re-focus back to original top-level page session context
+				cdp_session = await self.browser_session.get_or_create_cdp_session(focus=True)
+				await cdp_session.cdp_client.send.Target.activateTarget(params={'targetId': cdp_session.target_id})
+				await cdp_session.cdp_client.send.Runtime.runIfWaitingForDebugger(session_id=cdp_session.session_id)
+
+		except URLNotAllowedError as e:
+			raise e
+		except BrowserError as e:
+			raise e
+		except Exception as e:
+			# Extract key element info for error message
+			element_info = f'<{element_node.tag_name or "unknown"}'
+			if element_node.element_index:
+				element_info += f' index={element_node.element_index}'
+			element_info += '>'
+			raise BrowserError(
+				message=f'Failed to hover element: {e}',
+				long_term_memory=f'Failed to hover element {element_info}. The element may not be interactable or visible.',
+			)
+
+	async def _select_element_node_impl(self, element_node, start_offset: int = 0, end_offset: int | None = None) -> dict | None:
+		"""
+		Select text in an element using pure CDP.
+		"""
+		try:
+			# Get CDP client
+			cdp_session = await self.browser_session.cdp_client_for_node(element_node)
+
+			# Get the correct session ID for the element's frame
+			session_id = cdp_session.session_id
+
+			# Get element bounds
+			backend_node_id = element_node.backend_node_id
+
+			# Scroll element into view
+			try:
+				await cdp_session.cdp_client.send.DOM.scrollIntoViewIfNeeded(
+					params={'backendNodeId': backend_node_id}, session_id=session_id
+				)
+				await asyncio.sleep(0.05)  # Wait for scroll to complete
+			except Exception as e:
+				self.logger.debug(f'Failed to scroll element into view: {e}')
+
+			# Get object ID for the element
+			result = await cdp_session.cdp_client.send.DOM.resolveNode(
+				params={'backendNodeId': backend_node_id},
+				session_id=session_id,
+			)
+			assert 'object' in result and 'objectId' in result['object'], (
+				'Failed to find DOM element based on backendNodeId, maybe page content changed?'
+			)
+			object_id = result['object']['objectId']
+
+			# Use JavaScript to select text in the element
+			selection_script = f"""
+			function() {{
+				const element = this;
+				
+				// Focus the element first
+				element.focus();
+				
+				// Get the text content
+				const textContent = element.textContent || element.value || '';
+				
+				// Determine selection range
+				const start = {start_offset};
+				const end = {end_offset if end_offset is not None else 'textContent.length'};
+				
+				// Create selection
+				if (window.getSelection) {{
+					const selection = window.getSelection();
+					const range = document.createRange();
+					
+					// Try to select text within the element
+					if (element.firstChild && element.firstChild.nodeType === Node.TEXT_NODE) {{
+						range.setStart(element.firstChild, Math.min(start, element.firstChild.textContent.length));
+						range.setEnd(element.firstChild, Math.min(end, element.firstChild.textContent.length));
+					}} else {{
+						// Fallback: select all text
+						range.selectNodeContents(element);
+					}}
+					
+					selection.removeAllRanges();
+					selection.addRange(range);
+					
+					return {{
+						success: true,
+						selectedText: selection.toString(),
+						start: start,
+						end: end
+					}};
+				}} else {{
+					return {{
+						success: false,
+						error: 'Selection API not supported'
+					}};
+				}}
+			}}
+			"""
+
+			selection_result = await cdp_session.cdp_client.send.Runtime.callFunctionOn(
+				params={
+					'functionDeclaration': selection_script,
+					'objectId': object_id,
+					'returnByValue': True,
+				},
+				session_id=session_id,
+			)
+
+			selection_data = selection_result.get('result', {}).get('value', {})
+
+			if selection_data.get('success'):
+				selected_text = selection_data.get('selectedText', '')
+				self.logger.debug(f'Selected text: "{selected_text}"')
+				return {
+					'selected_text': selected_text,
+					'start_offset': selection_data.get('start', start_offset),
+					'end_offset': selection_data.get('end', end_offset),
+				}
+			else:
+				error_msg = selection_data.get('error', 'Failed to select text')
+				self.logger.warning(f'Text selection failed: {error_msg}')
+				return {'error': error_msg}
+
+		except Exception as e:
+			# Extract key element info for error message
+			element_info = f'<{element_node.tag_name or "unknown"}'
+			if element_node.element_index:
+				element_info += f' index={element_node.element_index}'
+			element_info += '>'
+			raise BrowserError(
+				message=f'Failed to select text in element: {e}',
+				long_term_memory=f'Failed to select text in element {element_info}. The element may not be selectable.',
+			)
+
+	async def _submit_form_node_impl(self, element_node) -> dict | None:
+		"""
+		Submit a form using pure CDP.
+		"""
+		try:
+			# Get CDP client
+			cdp_session = await self.browser_session.cdp_client_for_node(element_node)
+
+			# Get the correct session ID for the element's frame
+			session_id = cdp_session.session_id
+
+			# Get element bounds
+			backend_node_id = element_node.backend_node_id
+
+			# Scroll element into view
+			try:
+				await cdp_session.cdp_client.send.DOM.scrollIntoViewIfNeeded(
+					params={'backendNodeId': backend_node_id}, session_id=session_id
+				)
+				await asyncio.sleep(0.05)  # Wait for scroll to complete
+			except Exception as e:
+				self.logger.debug(f'Failed to scroll element into view: {e}')
+
+			# Get object ID for the element
+			result = await cdp_session.cdp_client.send.DOM.resolveNode(
+				params={'backendNodeId': backend_node_id},
+				session_id=session_id,
+			)
+			assert 'object' in result and 'objectId' in result['object'], (
+				'Failed to find DOM element based on backendNodeId, maybe page content changed?'
+			)
+			object_id = result['object']['objectId']
+
+			# Use JavaScript to submit the form
+			submit_script = """
+			function() {
+				const element = this;
+				
+				// Check if it's a form element
+				if (element.tagName.toLowerCase() === 'form') {
+					// Submit the form directly
+					element.submit();
+					return {
+						success: true,
+						method: 'form.submit()',
+						action: element.action || 'current page'
+					};
+				}
+				
+				// Check if it's a submit button
+				if (element.tagName.toLowerCase() === 'input' && element.type === 'submit') {
+					// Find the parent form and submit it
+					let form = element.closest('form');
+					if (form) {
+						form.submit();
+						return {
+							success: true,
+							method: 'button.click() -> form.submit()',
+							action: form.action || 'current page'
+						};
+					} else {
+						// Just click the button
+						element.click();
+						return {
+							success: true,
+							method: 'button.click()',
+							action: 'button click'
+						};
+					}
+				}
+				
+				// Check if it's inside a form
+				let form = element.closest('form');
+				if (form) {
+					form.submit();
+					return {
+						success: true,
+						method: 'closest form.submit()',
+						action: form.action || 'current page'
+					};
+				}
+				
+				return {
+					success: false,
+					error: 'Element is not a form or submit button and not inside a form'
+				};
+			}
+			"""
+
+			submit_result = await cdp_session.cdp_client.send.Runtime.callFunctionOn(
+				params={
+					'functionDeclaration': submit_script,
+					'objectId': object_id,
+					'returnByValue': True,
+				},
+				session_id=session_id,
+			)
+
+			submit_data = submit_result.get('result', {}).get('value', {})
+
+			if submit_data.get('success'):
+				method = submit_data.get('method', 'unknown')
+				action = submit_data.get('action', 'unknown')
+				self.logger.debug(f'Form submitted using {method}, action: {action}')
+				return {
+					'method': method,
+					'action': action,
+					'success': True,
+				}
+			else:
+				error_msg = submit_data.get('error', 'Failed to submit form')
+				self.logger.warning(f'Form submission failed: {error_msg}')
+				return {'error': error_msg}
+
+		except Exception as e:
+			# Extract key element info for error message
+			element_info = f'<{element_node.tag_name or "unknown"}'
+			if element_node.element_index:
+				element_info += f' index={element_node.element_index}'
+			element_info += '>'
+			raise BrowserError(
+				message=f'Failed to submit form: {e}',
+				long_term_memory=f'Failed to submit form {element_info}. The element may not be a form or submit button.',
+			)

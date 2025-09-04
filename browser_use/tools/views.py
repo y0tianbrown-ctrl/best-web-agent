@@ -1,4 +1,4 @@
-from typing import Generic, TypeVar
+from typing import Generic, Literal, TypeVar
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -91,3 +91,22 @@ class GetDropdownOptionsAction(BaseModel):
 class SelectDropdownOptionAction(BaseModel):
 	index: int = Field(ge=1, description='index of the dropdown element to select an option for')
 	text: str = Field(description='the text or exact value of the option to select')
+
+
+class DoubleClickElementAction(BaseModel):
+	index: int = Field(ge=1, description='index of the element to double click')
+	button: Literal['left', 'right', 'middle'] = Field(default='left', description='mouse button to use for double click')
+
+
+class HoverElementAction(BaseModel):
+	index: int = Field(ge=1, description='index of the element to hover over')
+
+
+class SelectElementAction(BaseModel):
+	index: int = Field(ge=1, description='index of the element to select text in')
+	start_offset: int = Field(default=0, description='start position for text selection')
+	end_offset: int | None = Field(default=None, description='end position for text selection (None means select all)')
+
+
+class SubmitFormAction(BaseModel):
+	index: int = Field(ge=1, description='index of the form element to submit')

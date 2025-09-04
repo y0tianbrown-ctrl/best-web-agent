@@ -16,12 +16,16 @@ from browser_use.browser import BrowserSession
 from browser_use.browser.events import (
 	ClickElementEvent,
 	CloseTabEvent,
+	DoubleClickEvent,
 	GetDropdownOptionsEvent,
 	GoBackEvent,
+	HoverEvent,
 	NavigateToUrlEvent,
 	ScrollEvent,
 	ScrollToTextEvent,
+	SelectTextEvent,
 	SendKeysEvent,
+	SubmitFormEvent,
 	SwitchTabEvent,
 	TypeTextEvent,
 	UploadFileEvent,
@@ -37,15 +41,19 @@ from browser_use.tools.views import (
 	ClickElementAction,
 	CloseTabAction,
 	DoneAction,
+	DoubleClickElementAction,
 	GetDropdownOptionsAction,
 	GoToUrlAction,
+	HoverElementAction,
 	InputTextAction,
 	NoParamsAction,
 	ScrollAction,
 	SearchGoogleAction,
 	SelectDropdownOptionAction,
+	SelectElementAction,
 	SendKeysAction,
 	StructuredOutputAction,
+	SubmitFormAction,
 	SwitchTabAction,
 	UploadFileAction,
 )
@@ -59,6 +67,10 @@ ClickElementEvent.model_rebuild()
 TypeTextEvent.model_rebuild()
 ScrollEvent.model_rebuild()
 UploadFileEvent.model_rebuild()
+DoubleClickEvent.model_rebuild()
+HoverEvent.model_rebuild()
+SelectTextEvent.model_rebuild()
+SubmitFormEvent.model_rebuild()
 
 Context = TypeVar('Context')
 
@@ -339,6 +351,150 @@ class Tools(Generic[Context]):
 				# Log the full error for debugging
 				logger.error(f'Failed to dispatch TypeTextEvent: {type(e).__name__}: {e}')
 				error_msg = f'Failed to input text into element {params.index}: {e}'
+				return ActionResult(error=error_msg)
+
+		@self.registry.action(
+			'Double click element by index. Only indices from your browser_state are allowed. Never use an index that is not inside your current browser_state.',
+			param_model=DoubleClickElementAction,
+		)
+		async def double_click_element_by_index(params: DoubleClickElementAction, browser_session: BrowserSession):
+			# Dispatch double click event with node
+			try:
+				assert params.index != 0, (
+					'Cannot double click on element with index 0. If there are no interactive elements use scroll(), wait(), refresh(), etc. to troubleshoot'
+				)
+
+				# Look up the node from the selector map
+				node = await browser_session.get_element_by_index(params.index)
+				if node is None:
+					raise ValueError(f'Element index {params.index} not found in browser state')
+
+				event = browser_session.event_bus.dispatch(
+					DoubleClickEvent(node=node, button=params.button)
+				)
+				await event
+				# Wait for handler to complete and get any exception or metadata
+				click_metadata = await event.event_result(raise_if_any=True, raise_if_none=False)
+				memory = f'Double clicked element with index {params.index}'
+				msg = f'🖱️🖱️ {memory}'
+				logger.info(msg)
+
+				# Include click coordinates in metadata if available
+				return ActionResult(
+					long_term_memory=memory,
+					metadata=click_metadata if isinstance(click_metadata, dict) else None,
+				)
+			except BrowserError as e:
+				return handle_browser_error(e)
+			except Exception as e:
+				error_msg = f'Failed to double click element {params.index}: {str(e)}'
+				return ActionResult(error=error_msg)
+
+		@self.registry.action(
+			'Hover over element by index. Only indices from your browser_state are allowed. Never use an index that is not inside your current browser_state.',
+			param_model=HoverElementAction,
+		)
+		async def hover_element_by_index(params: HoverElementAction, browser_session: BrowserSession):
+			# Dispatch hover event with node
+			try:
+				assert params.index != 0, (
+					'Cannot hover over element with index 0. If there are no interactive elements use scroll(), wait(), refresh(), etc. to troubleshoot'
+				)
+
+				# Look up the node from the selector map
+				node = await browser_session.get_element_by_index(params.index)
+				if node is None:
+					raise ValueError(f'Element index {params.index} not found in browser state')
+
+				event = browser_session.event_bus.dispatch(HoverEvent(node=node))
+				await event
+				# Wait for handler to complete and get any exception or metadata
+				hover_metadata = await event.event_result(raise_if_any=True, raise_if_none=False)
+				memory = f'Hovered over element with index {params.index}'
+				msg = f'👆 {memory}'
+				logger.info(msg)
+
+				# Include hover coordinates in metadata if available
+				return ActionResult(
+					long_term_memory=memory,
+					metadata=hover_metadata if isinstance(hover_metadata, dict) else None,
+				)
+			except BrowserError as e:
+				return handle_browser_error(e)
+			except Exception as e:
+				error_msg = f'Failed to hover over element {params.index}: {str(e)}'
+				return ActionResult(error=error_msg)
+
+		@self.registry.action(
+			'Select text in element by index. Only indices from your browser_state are allowed. Never use an index that is not inside your current browser_state.',
+			param_model=SelectElementAction,
+		)
+		async def select_element_by_index(params: SelectElementAction, browser_session: BrowserSession):
+			# Dispatch select event with node
+			try:
+				assert params.index != 0, (
+					'Cannot select text in element with index 0. If there are no interactive elements use scroll(), wait(), refresh(), etc. to troubleshoot'
+				)
+
+				# Look up the node from the selector map
+				node = await browser_session.get_element_by_index(params.index)
+				if node is None:
+					raise ValueError(f'Element index {params.index} not found in browser state')
+
+				event = browser_session.event_bus.dispatch(
+					SelectTextEvent(node=node, start_offset=params.start_offset, end_offset=params.end_offset)
+				)
+				await event
+				# Wait for handler to complete and get any exception or metadata
+				select_metadata = await event.event_result(raise_if_any=True, raise_if_none=False)
+				memory = f'Selected text in element with index {params.index}'
+				msg = f'📝 {memory}'
+				logger.info(msg)
+
+				# Include select coordinates in metadata if available
+				return ActionResult(
+					long_term_memory=memory,
+					metadata=select_metadata if isinstance(select_metadata, dict) else None,
+				)
+			except BrowserError as e:
+				return handle_browser_error(e)
+			except Exception as e:
+				error_msg = f'Failed to select text in element {params.index}: {str(e)}'
+				return ActionResult(error=error_msg)
+
+		@self.registry.action(
+			'Submit form by index. Only indices from your browser_state are allowed. Never use an index that is not inside your current browser_state.',
+			param_model=SubmitFormAction,
+		)
+		async def submit_form_by_index(params: SubmitFormAction, browser_session: BrowserSession):
+			# Dispatch submit form event with node
+			try:
+				assert params.index != 0, (
+					'Cannot submit form with index 0. If there are no interactive elements use scroll(), wait(), refresh(), etc. to troubleshoot'
+				)
+
+				# Look up the node from the selector map
+				node = await browser_session.get_element_by_index(params.index)
+				if node is None:
+					raise ValueError(f'Element index {params.index} not found in browser state')
+
+				event = browser_session.event_bus.dispatch(SubmitFormEvent(node=node))
+				await event
+				# Wait for handler to complete and get any exception or metadata
+				submit_metadata = await event.event_result(raise_if_any=True, raise_if_none=False)
+				memory = f'Submitted form with index {params.index}'
+				msg = f'📤 {memory}'
+				logger.info(msg)
+
+				# Include submit metadata if available
+				return ActionResult(
+					long_term_memory=memory,
+					metadata=submit_metadata if isinstance(submit_metadata, dict) else None,
+				)
+			except BrowserError as e:
+				return handle_browser_error(e)
+			except Exception as e:
+				error_msg = f'Failed to submit form {params.index}: {str(e)}'
 				return ActionResult(error=error_msg)
 
 		@self.registry.action('Upload file to interactive element with file path', param_model=UploadFileAction)

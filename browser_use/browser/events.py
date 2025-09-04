@@ -247,6 +247,41 @@ class ScrollToTextEvent(BaseEvent[None]):
 	event_timeout: float | None = 15.0  # seconds
 
 
+class DoubleClickEvent(ElementSelectedEvent[dict[str, Any] | None]):
+	"""Double click an element."""
+
+	node: 'EnhancedDOMTreeNode'
+	button: Literal['left', 'right', 'middle'] = 'left'
+
+	event_timeout: float | None = 15.0  # seconds
+
+
+class HoverEvent(ElementSelectedEvent[dict[str, Any] | None]):
+	"""Hover over an element."""
+
+	node: 'EnhancedDOMTreeNode'
+
+	event_timeout: float | None = 10.0  # seconds
+
+
+class SelectTextEvent(ElementSelectedEvent[dict[str, Any] | None]):
+	"""Select text in an element."""
+
+	node: 'EnhancedDOMTreeNode'
+	start_offset: int = 0
+	end_offset: int | None = None  # None means select all text
+
+	event_timeout: float | None = 10.0  # seconds
+
+
+class SubmitFormEvent(ElementSelectedEvent[dict[str, Any] | None]):
+	"""Submit a form."""
+
+	node: 'EnhancedDOMTreeNode'
+
+	event_timeout: float | None = 15.0  # seconds
+
+
 # ============================================================================
 
 
