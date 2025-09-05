@@ -987,6 +987,10 @@ class Agent(Generic[Context, AgentStructuredOutput]):
 				log_response(parsed, self.tools.registry.registry, self.logger)
 
 			self._log_next_action_summary(parsed)
+			
+			# Log LLM interaction to file
+			self._log_llm_interaction(input_messages, response)
+			
 			return parsed
 		except ValidationError:
 			# Just re-raise - Pydantic's validation errors are already descriptive
@@ -1077,6 +1081,40 @@ class Agent(Generic[Context, AgentStructuredOutput]):
 		self.logger.debug(
 			f'📍 Step {self.state.n_steps}: Ran {action_count} action{"" if action_count == 1 else "s"} in {step_duration:.2f}s: {status_str}'
 		)
+
+	def _log_llm_interaction(self, input_messages: list[BaseMessage], response: Any) -> None:
+		"""Log LLM interaction to file"""
+		try:
+			from browser_use.llm_logging import get_llm_logging_service
+			
+			logging_service = get_llm_logging_service()
+			if logging_service.enabled:
+				# Try to extract step number from current state
+				step = self.state.n_steps if hasattr(self.state, 'n_steps') else None
+				
+				# Prepare metadata
+				metadata = {
+					"task": self.task,
+					"model": self.llm.model,
+					"step_number": step,
+					"timestamp": datetime.now().isoformat()
+				}
+				
+				# Log the interaction
+				log_file = logging_service.log_llm_interaction(
+					model=self.llm.model,
+					input_messages=input_messages,
+					response=response,
+					step=step,
+					metadata=metadata
+				)
+				
+				if log_file:
+					self.logger.debug(f'📝 LLM interaction logged to: {log_file}')
+					
+		except Exception as e:
+			# Don't let logging errors break the main flow
+			self.logger.debug(f'Failed to log LLM interaction: {e}')
 
 	def _log_agent_event(self, max_steps: int, agent_run_error: str | None = None) -> None:
 		"""Sent the agent event for this run to telemetry"""

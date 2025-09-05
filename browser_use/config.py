@@ -226,6 +226,10 @@ class FlatEnvConfig(BaseSettings):
 	BROWSER_USE_PROXY_USERNAME: str | None = Field(default=None)
 	BROWSER_USE_PROXY_PASSWORD: str | None = Field(default=None)
 
+	# LLM logging configuration
+	BROWSER_USE_LLM_LOGGING_ENABLED: bool = Field(default=False)
+	BROWSER_USE_LLM_LOGGING_DIR: str = Field(default='llm_logs')
+
 
 class DBStyleEntry(BaseModel):
 	"""Database-style entry with UUID and metadata."""
