@@ -42,6 +42,7 @@ class ActionInfo(BaseModel):
 
 class TaskRequest(BaseModel):
     instructions: str = Field(..., description="Task instructions for the browser agent")
+    url: str = Field(..., description="URL to navigate to")
     model: str = Field("gpt-4o", description="LLM model to use")
     timeout: Optional[int] = Field(300, description="Task timeout in seconds")
     headless: Optional[bool] = Field(False, description="Run browser in headless mode")
@@ -421,9 +422,8 @@ async def run_task(req: TaskRequest):
         # Time browser session creation
         browser_start = time.time()
         browser_profile = BrowserProfile(
-            headless=req.headless,
+            headless=False,
             viewport=ViewportSize(width=1280, height=720),
-            stealth=True,
             args=["--no-sandbox", "--disable-dev-shm-usage"] if req.headless else []
         )
         
@@ -448,11 +448,13 @@ async def run_task(req: TaskRequest):
         
         # Time agent creation
         agent_start = time.time()
+        initial_actions = [{'go_to_url': {'url': req.url, 'new_tab': False}}]
         agent = Agent(
             task=req.instructions,
             llm=llm,
             browser_session=browser_session,
             register_new_step_callback=capture_actions_callback,
+            initial_actions=initial_actions,
             flash_mode=True  # Enable flash mode for faster execution
         )
         timing['agent_creation'] = time.time() - agent_start
