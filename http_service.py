@@ -422,7 +422,7 @@ async def run_task(req: TaskRequest):
         # Time browser session creation
         browser_start = time.time()
         browser_profile = BrowserProfile(
-            headless=False,
+            headless=req.headless,
             viewport=ViewportSize(width=1280, height=720),
             args=["--no-sandbox", "--disable-dev-shm-usage"] if req.headless else []
         )
@@ -455,6 +455,7 @@ async def run_task(req: TaskRequest):
             browser_session=browser_session,
             register_new_step_callback=capture_actions_callback,
             initial_actions=initial_actions,
+            use_vision=False,
             flash_mode=True  # Enable flash mode for faster execution
         )
         timing['agent_creation'] = time.time() - agent_start
