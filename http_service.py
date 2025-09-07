@@ -448,7 +448,10 @@ async def run_task(req: TaskRequest):
         
         # Time agent creation
         agent_start = time.time()
-        initial_actions = [{'go_to_url': {'url': req.url, 'new_tab': False}}]
+        initial_actions = [
+            {'go_to_url': {'url': req.url, 'new_tab': False}},
+            { 'wait': {'seconds': 3}}
+        ]
 
         # Speed optimization instructions for the model
         SPEED_OPTIMIZATION_PROMPT = """
@@ -466,7 +469,8 @@ async def run_task(req: TaskRequest):
             initial_actions=initial_actions,
             use_vision=False,
             extend_system_message=SPEED_OPTIMIZATION_PROMPT, # Optimize LLM behavior
-            flash_mode=True  # Enable flash mode for faster execution
+            flash_mode=False,  # Enable flash mode for faster execution,
+            use_thinking=True
         )
         timing['agent_creation'] = time.time() - agent_start
         
