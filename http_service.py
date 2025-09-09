@@ -45,7 +45,7 @@ class TaskRequest(BaseModel):
     instructions: str = Field(..., description="Task instructions for the browser agent")
     url: str = Field(..., description="URL to navigate to")
     model: str = Field("gpt-5-mini", description="LLM model to use")
-    timeout: Optional[int] = Field(100, description="Task timeout in seconds")
+    timeout: Optional[int] = Field(110, description="Task timeout in seconds")
     headless: Optional[bool] = Field(False, description="Run browser in headless mode")
 
 class TaskResponse(BaseModel):
@@ -417,12 +417,12 @@ async def run_task(req: TaskRequest):
         
         # Time LLM creation
         llm_start = time.time()
-        # llm = ChatOpenAI(model=req.model)
-        llm = ChatOpenAI(
-            model="openai/gpt-oss-20b:free",
-            api_key="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", 
-            base_url="https://openrouter.ai/api/v1",
-        )
+        llm = ChatOpenAI(model=req.model)
+        # llm = ChatOpenAI(
+        #     model="openai/gpt-oss-20b:free",
+        #     api_key="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", 
+        #     base_url="https://openrouter.ai/api/v1",
+        # )
         timing['llm_creation'] = time.time() - llm_start
         
         # Time browser session creation
