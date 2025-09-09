@@ -417,12 +417,12 @@ async def run_task(req: TaskRequest):
         
         # Time LLM creation
         llm_start = time.time()
-        llm = ChatOpenAI(model=req.model)
-        # llm = ChatOpenAI(
-        #     model="openai/gpt-oss-20b:free",
-        #     api_key="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", 
-        #     base_url="https://openrouter.ai/api/v1",
-        # )
+        # llm = ChatOpenAI(model=req.model)
+        llm = ChatOpenAI(
+            model="openai/gpt-oss-20b",
+            api_key="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", 
+            base_url="https://openrouter.ai/api/v1",
+        )
         timing['llm_creation'] = time.time() - llm_start
         
         # Time browser session creation
@@ -475,7 +475,7 @@ async def run_task(req: TaskRequest):
             use_vision=False,
             extend_system_message=SPEED_OPTIMIZATION_PROMPT, # Optimize LLM behavior
             flash_mode=True,  # Enable flash mode for faster execution,
-            llm_timeout=20,
+            llm_timeout=25,
             step_timeout=30
         )
         timing['agent_creation'] = time.time() - agent_start
