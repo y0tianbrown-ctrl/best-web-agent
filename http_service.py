@@ -544,7 +544,7 @@ async def run_task(req: TaskRequest):
     except asyncio.TimeoutError:
         return TaskResponse(
             success=True,
-            result=result,
+            result="",
             actions=[],
             total_actions=0,
             timing=timing
