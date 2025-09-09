@@ -482,7 +482,10 @@ async def run_task(req: TaskRequest):
         
         # Time agent execution (main task)
         execution_start = time.time()
-        history = await asyncio.wait_for(agent.run(), timeout=req.timeout)
+        try:
+            history = await asyncio.wait_for(agent.run(), timeout=req.timeout)  
+        except asyncio.TimeoutError:
+            history = None
 
         timing['agent_execution'] = time.time() - execution_start
         
@@ -491,10 +494,11 @@ async def run_task(req: TaskRequest):
         if captured_actions:
             actions = captured_actions
             logger.info(f"Used {len(actions)} actions captured during execution")
-        else:
+        elif history:
             # Fallback: Extract actions from history (less reliable)
             actions = await extract_real_xpath_actions(history, agent.browser_session)
             logger.info(f"Fallback: Extracted {len(actions)} actions from history")
+            
         timing['action_extraction'] = time.time() - extraction_start
         
         # Time result processing
@@ -540,16 +544,6 @@ async def run_task(req: TaskRequest):
             total_actions=len(actions),
             timing=timing
         )
-        
-    except asyncio.TimeoutError:
-        return TaskResponse(
-            success=True,
-            result="",
-            actions=[],
-            total_actions=0,
-            timing=timing
-        )
-
     except Exception as e:
         total_time = time.time() - start_time
         timing['total_time'] = total_time
