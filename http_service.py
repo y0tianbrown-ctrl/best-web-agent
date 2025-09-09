@@ -43,8 +43,8 @@ class ActionInfo(BaseModel):
 class TaskRequest(BaseModel):
     instructions: str = Field(..., description="Task instructions for the browser agent")
     url: str = Field(..., description="URL to navigate to")
-    model: str = Field("gpt-4o", description="LLM model to use")
-    timeout: Optional[int] = Field(300, description="Task timeout in seconds")
+    model: str = Field("gpt-5-mini", description="LLM model to use")
+    timeout: Optional[int] = Field(100, description="Task timeout in seconds")
     headless: Optional[bool] = Field(False, description="Run browser in headless mode")
 
 class TaskResponse(BaseModel):
@@ -450,7 +450,6 @@ async def run_task(req: TaskRequest):
         agent_start = time.time()
         initial_actions = [
             {'go_to_url': {'url': req.url, 'new_tab': False}},
-            { 'wait': {'seconds': 3}}
         ]
 
         # Speed optimization instructions for the model
@@ -469,14 +468,22 @@ async def run_task(req: TaskRequest):
             initial_actions=initial_actions,
             use_vision=False,
             extend_system_message=SPEED_OPTIMIZATION_PROMPT, # Optimize LLM behavior
-            flash_mode=False,  # Enable flash mode for faster execution,
-            use_thinking=True
+            flash_mode=True,  # Enable flash mode for faster execution,
+            llm_timeout=20,
+            step_timeout=30
         )
         timing['agent_creation'] = time.time() - agent_start
         
         # Time agent execution (main task)
         execution_start = time.time()
         history = await asyncio.wait_for(agent.run(), timeout=req.timeout)
+
+        
+        
+    except asyncio.TimeoutError:
+        history = agent.history
+        total_time = time.time() - start_time
+
         timing['agent_execution'] = time.time() - execution_start
         
         # Time action extraction
@@ -533,13 +540,7 @@ async def run_task(req: TaskRequest):
             total_actions=len(actions),
             timing=timing
         )
-        
-    except asyncio.TimeoutError:
-        total_time = time.time() - start_time
-        timing['total_time'] = total_time
-        timing['error'] = 'timeout'
-        logger.error(f"Task timed out after {total_time:.2f}s")
-        raise HTTPException(status_code=408, detail=f"Task timed out after {total_time:.2f}s")
+
     except Exception as e:
         total_time = time.time() - start_time
         timing['total_time'] = total_time
