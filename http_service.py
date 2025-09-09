@@ -6,6 +6,7 @@ import logging
 import time
 from typing import Optional, Dict, Any, List
 from browser_use import Agent, ChatOpenAI
+from browser_use.llm import ChatOpenRouter
 from browser_use.browser import BrowserProfile, BrowserSession
 from browser_use.browser.profile import ViewportSize
 
@@ -416,7 +417,12 @@ async def run_task(req: TaskRequest):
         
         # Time LLM creation
         llm_start = time.time()
-        llm = ChatOpenAI(model=req.model)
+        # llm = ChatOpenAI(model=req.model)
+        llm = ChatOpenAI(
+            model="openai/gpt-oss-20b:free",
+            api_key="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", 
+            base_url="https://openrouter.ai/api/v1",
+        )
         timing['llm_creation'] = time.time() - llm_start
         
         # Time browser session creation
@@ -478,12 +484,6 @@ async def run_task(req: TaskRequest):
         execution_start = time.time()
         history = await asyncio.wait_for(agent.run(), timeout=req.timeout)
 
-        
-        
-    except asyncio.TimeoutError:
-        history = agent.history
-        total_time = time.time() - start_time
-
         timing['agent_execution'] = time.time() - execution_start
         
         # Time action extraction
@@ -538,6 +538,15 @@ async def run_task(req: TaskRequest):
             result=result,
             actions=clean_actions,
             total_actions=len(actions),
+            timing=timing
+        )
+        
+    except asyncio.TimeoutError:
+        return TaskResponse(
+            success=True,
+            result=result,
+            actions=[],
+            total_actions=0,
             timing=timing
         )
 
