@@ -420,7 +420,7 @@ async def run_task(req: TaskRequest):
         # llm = ChatOpenAI(model=req.model)
         llm = ChatOpenAI(
             model="openai/gpt-oss-20b",
-            api_key="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", 
+            api_key="", 
             base_url="https://openrouter.ai/api/v1",
         )
         timing['llm_creation'] = time.time() - llm_start
