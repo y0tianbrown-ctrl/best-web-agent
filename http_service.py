@@ -4,11 +4,16 @@ import uvicorn
 import asyncio
 import logging
 import time
+import os
 from typing import Optional, Dict, Any, List
+from dotenv import load_dotenv
 from browser_use import Agent, ChatOpenAI
 from browser_use.llm import ChatOpenRouter
 from browser_use.browser import BrowserProfile, BrowserSession
 from browser_use.browser.profile import ViewportSize
+
+# Load environment variables from .env file
+load_dotenv()
 
 # Configure basic logging
 logging.basicConfig(level=logging.INFO)
@@ -46,7 +51,7 @@ class TaskRequest(BaseModel):
     url: str = Field(..., description="URL to navigate to")
     model: str = Field("gpt-5-mini", description="LLM model to use")
     timeout: Optional[int] = Field(110, description="Task timeout in seconds")
-    headless: Optional[bool] = Field(False, description="Run browser in headless mode")
+    headless: Optional[bool] = Field(True, description="Run browser in headless mode")
 
 class TaskResponse(BaseModel):
     # success: bool
@@ -417,10 +422,17 @@ async def run_task(req: TaskRequest):
         
         # Time LLM creation
         llm_start = time.time()
-        # llm = ChatOpenAI(model=req.model)
+        
+        # Get model and API key from environment variables
+        model = os.getenv("MODEL", req.model)
+        api_key = os.getenv("API_KEY")
+        
+        if not api_key:
+            raise HTTPException(status_code=500, detail="API_KEY environment variable is required")
+        
         llm = ChatOpenAI(
-            model="openai/gpt-oss-20b",
-            api_key="", 
+            model=model,
+            api_key=api_key,
             base_url="https://openrouter.ai/api/v1",
         )
         timing['llm_creation'] = time.time() - llm_start
