@@ -42,19 +42,19 @@ class ActionInfo(BaseModel):
         return {k: v for k, v in data.items() if v is not None}
 
 class TaskRequest(BaseModel):
-    instructions: str = Field(..., description="Task instructions for the browser agent")
+    prompt: str = Field(..., description="Task prompt for the browser agent")
     url: str = Field(..., description="URL to navigate to")
     model: str = Field("gpt-5-mini", description="LLM model to use")
     timeout: Optional[int] = Field(110, description="Task timeout in seconds")
     headless: Optional[bool] = Field(False, description="Run browser in headless mode")
 
 class TaskResponse(BaseModel):
-    success: bool
-    result: Optional[str] = None
-    error: Optional[str] = None
+    # success: bool
+    # result: Optional[str] = None
+    # error: Optional[str] = None
     actions: Optional[List[Dict[str, Any]]] = None
     total_actions: Optional[int] = None
-    timing: Optional[Dict[str, float]] = None
+    # timing: Optional[Dict[str, float]] = None
 
 @app.get("/")
 async def root():
@@ -405,7 +405,7 @@ def _generate_xpath_from_attributes(element) -> str:
     except Exception:
         return "//div"
 
-@app.post("/run-task", response_model=TaskResponse)
+@app.post("/solve_task", response_model=TaskResponse)
 async def run_task(req: TaskRequest):
     """Execute a browser automation task with real XPath selectors"""
     # Initialize timing measurements
@@ -413,7 +413,7 @@ async def run_task(req: TaskRequest):
     start_time = time.time()
     
     try:
-        logger.info(f"Running task: {req.instructions[:50]}...")
+        logger.info(f"Running task: {req.prompt[:50]}...")
         
         # Time LLM creation
         llm_start = time.time()
@@ -467,7 +467,7 @@ async def run_task(req: TaskRequest):
         """
 
         agent = Agent(
-            task=req.instructions,
+            task=req.prompt,
             llm=llm,
             browser_session=browser_session,
             register_new_step_callback=capture_actions_callback,
@@ -538,11 +538,11 @@ async def run_task(req: TaskRequest):
         logger.info(f"Timing breakdown: {timing}")
         
         return TaskResponse(
-            success=True,
-            result=result,
+            # success=True,
+            # result=result,
             actions=clean_actions,
             total_actions=len(actions),
-            timing=timing
+            # timing=timing
         )
     except Exception as e:
         total_time = time.time() - start_time
