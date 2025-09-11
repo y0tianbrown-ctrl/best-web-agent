@@ -545,7 +545,13 @@ async def run_task(req: TaskRequest):
                     result = str(last_item)
         
         # Clean actions by removing None values
-        clean_actions = []
+        clean_actions = [
+            {
+                "type": 'NavigateAction',
+                "url": req.url
+            }
+        ]
+
         for action in actions:
             if action:
                 clean_actions.append(action.dict())
