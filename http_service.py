@@ -49,17 +49,15 @@ class ActionInfo(BaseModel):
 class TaskRequest(BaseModel):
     prompt: str = Field(..., description="Task prompt for the browser agent")
     url: str = Field(..., description="URL to navigate to")
+    id: str = Field(..., description="Unique task identifier")
     model: str = Field("gpt-5-mini", description="LLM model to use")
     timeout: Optional[int] = Field(110, description="Task timeout in seconds")
     headless: Optional[bool] = Field(True, description="Run browser in headless mode")
 
 class TaskResponse(BaseModel):
-    # success: bool
-    # result: Optional[str] = None
-    # error: Optional[str] = None
+    task_id: str
     actions: Optional[List[Dict[str, Any]]] = None
-    total_actions: Optional[int] = None
-    # timing: Optional[Dict[str, float]] = None
+    web_agent_id: Optional[str] = None
 
 @app.get("/")
 async def root():
@@ -550,11 +548,9 @@ async def run_task(req: TaskRequest):
         logger.info(f"Timing breakdown: {timing}")
         
         return TaskResponse(
-            # success=True,
-            # result=result,
+            task_id=req.id,
             actions=clean_actions,
-            total_actions=len(actions),
-            # timing=timing
+            web_agent_id="WEB_Agent_v2.0"
         )
     except Exception as e:
         total_time = time.time() - start_time
