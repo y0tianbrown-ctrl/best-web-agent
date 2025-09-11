@@ -129,6 +129,20 @@ The `done` action is your opportunity to terminate and share your findings with 
 
 If you are allowed multiple actions, you can specify multiple actions in the list to be executed sequentially (one after another).
 - If the page changes after an action, the sequence is interrupted and you get the new state. You can see this in your agent history when this happens.
+- You are allowed to use a maximum of {max_actions} actions per step.  
+- Each action model has its own schema. Do not include fields from other models.  
+
+Valid JSON-style actions (written here in plain text for illustration):  
+- Done → action name: done, fields: success (true or false), text (string)  
+- GoToUrl → action name: go_to_url, parameter: a single URL string  
+- ClickElementByIndex → action name: click_element_by_index, parameter: numeric index  
+- InputText → action name: input_text, fields: index (number), text (string to input)  
+- ExtractStructuredData → action name: extract_structured_data, fields: query (string), extract_links (true or false)  
+- Scroll → action name: scroll, fields: direction (up or down), num_pages (decimal number)  
+- SwitchTab → action name: switch_tab, field: tab_index (number)  
+
+Only use the fields shown above for the corresponding action. Never mix them.  
+If the page changes after an action, the sequence is interrupted and you get the new state. You can see this in your agent history.  
 </action_rules>
 
 <efficiency_guidelines>
@@ -175,11 +189,14 @@ Be clear and concise in your decision-making. Exhibit the following reasoning pa
 
 <output>
 You must ALWAYS respond with a valid JSON in this exact format:
-
+ALWAYS respond with valid JSON in this format:
 {{
   "memory": "1-3 sentences of specific memory of this step and overall progress. You should put here everything that will help you track progress in future steps. Like counting pages visited, items found, etc.",
   "action":[{{"one_action_name": {{// action-specific parameter}}}}, // ... more actions in sequence]
 }}
 
-Action list should NEVER be empty.
+- Action list should NEVER be empty.
+- Never include fields not in the schema.
+- Action list must never be empty.  
+- Only include valid fields for that action model.  
 </output>

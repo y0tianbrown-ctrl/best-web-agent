@@ -36,8 +36,11 @@ class ActionInfo(BaseModel):
     type: Optional[str] = None
     text: Optional[str] = None
     value: Optional[str] = None
+    url: Optional[str] = None
     up: Optional[bool] = None
     down: Optional[bool] = None
+    go_back: Optional[bool] = None
+    go_forward: Optional[bool] = None
     time_seconds: Optional[int] = None
     file_path: Optional[str] = None
     
@@ -119,7 +122,19 @@ async def _parse_action_with_real_xpath(action_item, browser_session) -> Optiona
                 url = action_data['go_to_url']['url']
                 return ActionInfo(
                     type="NavigateAction",
-                    selector={"type": "xpathSelector", "value": f"//html[@data-url='{url}']"}
+                    url=url
+                )
+                
+            elif action_name == 'go_back':
+                return ActionInfo(
+                    type="NavigateAction",
+                    go_back=True
+                )
+                                
+            elif action_name == 'go_forward':
+                return ActionInfo(
+                    type="NavigateAction",
+                    go_forward=True
                 )
                 
             elif action_name == 'scroll':
@@ -129,8 +144,8 @@ async def _parse_action_with_real_xpath(action_item, browser_session) -> Optiona
                 up = not down
                 return ActionInfo(
                     type="ScrollAction",
-                    selector={},
-                    value=str(num_pages),
+                    selector={"type": "xpathSelector", "value": num_pages},
+                    value=num_pages,
                     up=up,
                     down=down
                 )
@@ -225,10 +240,16 @@ async def _parse_action_with_real_xpath(action_item, browser_session) -> Optiona
                     )
                     
                 elif 'go_to_url' in action_data:
-                    url = action_data['go_to_url']['url']
+                    url_value = action_data['go_to_url']['url']
                     return ActionInfo(
                         type="NavigateAction",
-                        selector={"type": "xpathSelector", "value": f"//html[@data-url='{url}']"}
+                        value=url_value
+                    )
+                    
+                elif 'go_back' in action_data:
+                    return ActionInfo(
+                        type="NavigateAction",
+                        value="go_back"
                     )
                     
                 elif 'scroll' in action_data:
@@ -416,7 +437,7 @@ async def run_task(req: TaskRequest):
     start_time = time.time()
     
     try:
-        logger.info(f"Running task: {req.prompt[:50]}...")
+        logger.info(f"Running task: {req.prompt}")
         
         # Time LLM creation
         llm_start = time.time()
@@ -528,6 +549,12 @@ async def run_task(req: TaskRequest):
         for action in actions:
             if action:
                 clean_actions.append(action.dict())
+        
+        clean_actions.append({ 
+                              "type": "WaitAction", 
+                              "time_seconds": 5 })
+
+        logger.info(f"Final actions: {clean_actions}")
         
         timing['result_processing'] = time.time() - result_start
         
