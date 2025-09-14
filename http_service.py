@@ -522,6 +522,7 @@ async def run_task(req: TaskRequest):
         
         # Time action extraction
         extraction_start = time.time()
+        actions = []
         if captured_actions:
             actions = captured_actions
             logger.info(f"Used {len(actions)} actions captured during execution")
