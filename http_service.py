@@ -55,7 +55,7 @@ class TaskRequest(BaseModel):
     id: str = Field(..., description="Unique task identifier")
     model: str = Field("gpt-5-mini", description="LLM model to use")
     timeout: Optional[int] = Field(110, description="Task timeout in seconds")
-    headless: Optional[bool] = Field(True, description="Run browser in headless mode")
+    headless: Optional[bool] = Field(False, description="Run browser in headless mode")
 
 class TaskResponse(BaseModel):
     task_id: str
