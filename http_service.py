@@ -55,7 +55,7 @@ class TaskRequest(BaseModel):
     id: str = Field(..., description="Unique task identifier")
     model: str = Field("gpt-5-mini", description="LLM model to use")
     timeout: Optional[int] = Field(110, description="Task timeout in seconds")
-    headless: Optional[bool] = Field(False, description="Run browser in headless mode")
+    headless: Optional[bool] = Field(True, description="Run browser in headless mode")
 
 class TaskResponse(BaseModel):
     task_id: str
@@ -460,8 +460,9 @@ async def run_task(req: TaskRequest):
         browser_start = time.time()
         browser_profile = BrowserProfile(
             headless=req.headless,
-            viewport=ViewportSize(width=1280, height=720),
-            args=["--no-sandbox", "--disable-dev-shm-usage"] if req.headless else []
+            viewport=ViewportSize(width=1920, height=1080),
+            window_size=ViewportSize(width=1920, height=1080),
+            args=["--no-sandbox", "--disable-dev-shm-usage", "--window-size=1920,1080"] if req.headless else ["--window-size=1920,1080"]
         )
         
         browser_session = BrowserSession(browser_profile=browser_profile)
